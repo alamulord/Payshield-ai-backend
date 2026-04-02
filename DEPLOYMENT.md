@@ -129,20 +129,35 @@ git push -u origin main
 3. **Set Environment Variables** (in Render dashboard):
 ```
 DATABASE_URL=sqlite+aiosqlite:///./payshield.db
-JWT_SECRET=<generate-a-strong-secret>
+JWT_SECRET=ycVDkLEiRl41lRWR6TqWvfnl5TW491YTwAgbEc7TnVT
 JWT_ALGORITHM=HS256
 JWT_EXPIRATION_MINUTES=1440
-CORS_ORIGINS=https://your-frontend.vercel.app,http://localhost:5173
+CORS_ORIGINS=https://payshield-ai.vercel.app
 DEBUG=false
 ```
 
-4. **For PostgreSQL on Render** (recommended for production):
-   - Create a Render PostgreSQL database
-   - Use the Internal Database URL:
-```
-DATABASE_URL=postgresql+asyncpg://<user>:<pass>@<host>/<dbname>
-```
-   - Add `asyncpg==0.30.0` to `requirements.txt`
+4. **For PostgreSQL on Render** (Recommended for Production Migration):
+   SQLite is fine for local development, but in a stateless production environment like Render, you will lose your SQLite data every time the server restarts or deploys. You must use Render PostgreSQL.
+
+   **Step-by-Step Setup:**
+   1. In your Render Dashboard, click **New +** and select **PostgreSQL**.
+   2. Name your database (e.g., `payshield-db`), select your preferred region, and select the Free tier. Click **Create Database**.
+   3. Once the database provisions, look for the **Internal Database URL** in the connection settings. It will look something like this:
+      `postgres://user:pass@host/dbname`
+   4. **CRITICAL:** FastAPI and SQLAlchemy require the `asyncpg` asynchronous driver. You **must** modify the `postgres://` prefix to `postgresql+asyncpg://` before saving it in your environment variables.
+      
+      *Example Transformation:*
+      **Original Internal URL**: `postgres://payshield:secret123@dpg-cabc123-a:5432/payshield`
+      **Updated Environment Variable**: `DATABASE_URL=postgresql+asyncpg://payshield:secret123@dpg-cabc123-a:5432/payshield`
+      
+      
+   5. Copy your modified `DATABASE_URL` and paste it into the **Environment Variables** of your `payshield-api` Web Service on Render, replacing the SQLite path.
+   6. Tell Render to install the specific async database driver by adding it to your `backend/payshield-backend/requirements.txt` file before your next repository commit:
+      ```txt
+      # Add this line to the bottom of requirements.txt
+      asyncpg==0.30.0
+      ```
+   7. Upon your next successful deployment push, FastAPI will automatically connect and seed the new PostgreSQL database with data.
 
 ### Option B: Railway
 
