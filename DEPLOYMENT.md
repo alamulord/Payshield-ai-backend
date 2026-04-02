@@ -128,6 +128,7 @@ git push -u origin main
 
 3. **Set Environment Variables** (in Render dashboard):
 ```
+PYTHON_VERSION=3.11.9
 DATABASE_URL=sqlite+aiosqlite:///./payshield.db
 JWT_SECRET=ycVDkLEiRl41lRWR6TqWvfnl5TW491YTwAgbEc7TnVT
 JWT_ALGORITHM=HS256
