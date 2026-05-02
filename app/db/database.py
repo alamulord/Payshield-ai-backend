@@ -4,11 +4,19 @@ from sqlalchemy.orm import DeclarativeBase
 from app.core.config import settings
 
 
+# Build connect_args based on database type
+_connect_args = {"check_same_thread": False} if "sqlite" in settings.DATABASE_URL else {}
+
+# Add SSL requirement for PostgreSQL (required by cloud providers like Render)
+# For asyncpg (async PostgreSQL driver), ssl=True enables SSL mode
+if "postgresql" in settings.DATABASE_URL.lower():
+    _connect_args["ssl"] = True
+
 # Create async engine — O(1)
 engine = create_async_engine(
     settings.DATABASE_URL,
     echo=settings.DEBUG,
-    connect_args={"check_same_thread": False} if "sqlite" in settings.DATABASE_URL else {},
+    connect_args=_connect_args,
 )
 
 # Session factory — O(1)
