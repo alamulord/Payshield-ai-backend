@@ -3,60 +3,50 @@ import sys
 import ssl
 import os
 
-# Debug logging to file
-_debug_log = []
-def log(msg):
-    _debug_log.append(msg)
-    with open('/tmp/db_debug.log', 'a') as f:
-        f.write(msg + '\n')
+# IMMEDIATE print to stderr (should show in Render logs)
+print("[DB_START] Loading database module", flush=True)
+sys.stderr.write("[DB_START] Loading database module\n")
+sys.stderr.flush()
 
-log("=== DATABASE MODULE LOADING ===")
+# Get DATABASE_URL from environment (Render sets this)
+_DATABASE_URL = os.environ.get("DATABASE_URL", "")
 
-# Get DATABASE_URL - check all possible env var names
-_DATABASE_URL = os.environ.get("DATABASE_URL") or os.environ.get("DATABASE_URL_INTERNAL")
-log(f"Raw DATABASE_URL: {_DATABASE_URL}")
+print(f"[DB_URL] Raw URL: {_DATABASE_URL[:60]}...", flush=True)
+sys.stderr.write(f"[DB_URL] Raw URL: {_DATABASE_URL[:60]}...\n")
+sys.stderr.flush()
 
-# If not in env, check settings (for local development)
-if not _DATABASE_URL:
-    log("DATABASE_URL not in env, using settings")
-    from app.core.config import settings
-    _DATABASE_URL = settings.DATABASE_URL
-    log(f"From settings: {_DATABASE_URL}")
+# Convert postgres:// to postgresql+asyncpg://
+if _DATABASE_URL.startswith("postgres://"):
+    _DATABASE_URL = _DATABASE_URL.replace("postgres://", "postgresql+asyncpg://", 1)
+    print("[DB_URL] Converted postgres:// to postgresql+asyncpg://", flush=True)
+elif _DATABASE_URL.startswith("postgresql://") and "+asyncpg" not in _DATABASE_URL:
+    _DATABASE_URL = _DATABASE_URL.replace("postgresql://", "postgresql+asyncpg://", 1)
+    print("[DB_URL] Added +asyncpg driver", flush=True)
 
-# CRITICAL: Force conversion to postgresql+asyncpg
-if _DATABASE_URL:
-    # Handle postgres:// (Render's format)
-    if _DATABASE_URL.startswith("postgres://"):
-        _DATABASE_URL = _DATABASE_URL.replace("postgres://", "postgresql+asyncpg://", 1)
-        log("Converted postgres:// to postgresql+asyncpg://")
-    # Handle postgresql:// without +asyncpg
-    elif _DATABASE_URL.startswith("postgresql://"):
-        _DATABASE_URL = _DATABASE_URL.replace("postgresql://", "postgresql+asyncpg://", 1)
-        log("Added +asyncpg driver")
-
-log(f"FINAL DATABASE_URL: {_DATABASE_URL}")
+print(f"[DB_URL] Final URL prefix: {_DATABASE_URL[:35]}...", flush=True)
 
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.orm import DeclarativeBase
 
-# Build connect_args based on database type
+# Build connect_args
 _connect_args = {"check_same_thread": False} if "sqlite" in _DATABASE_URL else {}
 
-# Add SSL for PostgreSQL (Render requires SSL)
+# Add SSL for PostgreSQL
 if "postgresql" in _DATABASE_URL.lower():
     ssl_context = ssl.create_default_context()
     ssl_context.check_hostname = False
     ssl_context.verify_mode = ssl.CERT_NONE
     _connect_args["ssl"] = ssl_context
-    log("SSL enabled")
+    print("[DB_SSL] SSL enabled for PostgreSQL", flush=True)
 
-log(f"Creating engine with URL starting with: {_DATABASE_URL[:30]}")
-
+# Create engine
+print("[DB_ENGINE] Creating async engine...", flush=True)
 engine = create_async_engine(
     _DATABASE_URL,
-    echo=os.environ.get("DEBUG", "false").lower() == "true",
+    echo=False,
     connect_args=_connect_args,
 )
+print("[DB_ENGINE] Engine created successfully", flush=True)
 
 # Session factory
 async_session = async_sessionmaker(
@@ -65,7 +55,6 @@ async_session = async_sessionmaker(
     expire_on_commit=False,
 )
 
-log("Engine created successfully")
 
 class Base(DeclarativeBase):
     """Base class for all SQLAlchemy models"""
@@ -73,7 +62,7 @@ class Base(DeclarativeBase):
 
 
 async def get_db() -> AsyncSession:
-    """Dependency for getting async DB sessions. O(1)"""
+    """Dependency for getting async DB sessions"""
     async with async_session() as session:
         try:
             yield session
@@ -86,15 +75,11 @@ async def get_db() -> AsyncSession:
 
 
 async def init_db():
-    """Create all tables. O(n) where n = number of tables"""
+    """Create all tables"""
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
 
 async def close_db():
-    """Close database engine. O(1)"""
+    """Close database engine"""
     await engine.dispose()
-
-# Also print at end of module load
-print(f"\n\n[DB_INIT] DATABASE_URL used: {_DATABASE_URL[:50]}...")
-print(f"[DB_INIT] Engine created successfully\n\n")
