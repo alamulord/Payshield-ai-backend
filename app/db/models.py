@@ -1,6 +1,6 @@
 # app/db/models.py — SQLAlchemy ORM models for PayShield
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime
 from sqlalchemy import (
     Column, String, Float, Integer, DateTime, Text, Boolean,
     ForeignKey, Index, Enum as SAEnum
@@ -14,7 +14,8 @@ def generate_uuid():
 
 
 def utcnow():
-    return datetime.now(timezone.utc)
+    """Return naive UTC datetime for PostgreSQL compatibility"""
+    return datetime.utcnow()
 
 
 class User(Base):

@@ -11,10 +11,17 @@ from sqlalchemy import select, func, and_, case
 from app.db.models import Transaction, Alert, Investigation
 
 
+def _make_naive(dt):
+    """Convert timezone-aware datetime to naive datetime for PostgreSQL"""
+    if dt.tzinfo is not None:
+        return dt.replace(tzinfo=None)
+    return dt
+
+
 async def get_overview_kpis(db: AsyncSession) -> dict:
     """Get overview page KPI statistics. O(n) queries, would be O(1) with materialized views"""
     now = datetime.now(timezone.utc)
-    last_24h = now - timedelta(hours=24)
+    last_24h = _make_naive(now - timedelta(hours=24))
 
     # Total transactions in 24h
     tx_result = await db.execute(
@@ -119,7 +126,7 @@ async def get_overview_kpis(db: AsyncSession) -> dict:
 
 async def get_velocity_data(db: AsyncSession, time_range: str = "24H") -> dict:
     """Get transaction velocity data for charts. O(n)"""
-    now = datetime.now(timezone.utc)
+    now = _make_naive(datetime.now(timezone.utc))
 
     if time_range == "1H":
         intervals = 12
@@ -217,7 +224,7 @@ async def get_fraud_by_type(db: AsyncSession) -> dict:
 
 async def get_fraud_trends(db: AsyncSession, months: int = 12) -> dict:
     """Get monthly fraud trend data. O(months)"""
-    now = datetime.now(timezone.utc)
+    now = _make_naive(datetime.now(timezone.utc))
     data = []
 
     for i in range(months):
