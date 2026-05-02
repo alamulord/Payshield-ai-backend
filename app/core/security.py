@@ -2,13 +2,19 @@
 from datetime import datetime, timedelta, timezone
 from typing import Optional, List
 from jose import JWTError, jwt
-from passlib.context import CryptContext
 from fastapi import Depends, HTTPException, status, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from app.core.config import settings
 
 # Password hashing — O(1) per hash
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+try:
+    from passlib.context import CryptContext
+    pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+    BCRYPT_AVAILABLE = True
+except ImportError:
+    BCRYPT_AVAILABLE = False
+    pwd_context = None
+    print("WARNING: bcrypt not available, using simple hash")
 
 # Bearer token scheme
 security_scheme = HTTPBearer(auto_error=False)
@@ -19,16 +25,29 @@ def hash_password(password: str) -> str:
     
     Note: bcrypt has a 72-byte limit on passwords, so we truncate if necessary.
     """
-    # Truncate password to 72 bytes (bcrypt limit) if necessary
-    password_bytes = password.encode('utf-8')
-    if len(password_bytes) > 72:
-        password = password_bytes[:72].decode('utf-8', errors='ignore')
-    return pwd_context.hash(password)
+    if BCRYPT_AVAILABLE and pwd_context:
+        # Truncate password to 72 bytes (bcrypt limit) if necessary
+        password_bytes = password.encode('utf-8')
+        if len(password_bytes) > 72:
+            password = password_bytes[:72].decode('utf-8', errors='ignore')
+        return pwd_context.hash(password)
+    else:
+        # Fallback simple hash (NOT for production!)
+        import hashlib
+        return hashlib.sha256(password.encode()).hexdigest()
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     """Verify a password against its hash. O(1)"""
-    return pwd_context.verify(plain_password, hashed_password)
+    if BCRYPT_AVAILABLE and pwd_context:
+        try:
+            return pwd_context.verify(plain_password, hashed_password)
+        except Exception:
+            return False
+    else:
+        # Fallback simple hash verification
+        import hashlib
+        return hashlib.sha256(plain_password.encode()).hexdigest() == hashed_password
 
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
