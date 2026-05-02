@@ -133,6 +133,17 @@ async def root():
     }
 
 
+# Simple test endpoint - no database required
+@app.get("/api/v1/test")
+async def test_endpoint():
+    """Simple test endpoint that doesn't require database"""
+    return {
+        "status": "ok",
+        "message": "Backend is running",
+        "timestamp": str(asyncio.get_event_loop().time()),
+    }
+
+
 # Seed endpoint - manually trigger seeding
 @app.post("/api/v1/seed")
 async def seed_database():
