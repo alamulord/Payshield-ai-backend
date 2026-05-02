@@ -15,7 +15,14 @@ security_scheme = HTTPBearer(auto_error=False)
 
 
 def hash_password(password: str) -> str:
-    """Hash a password using bcrypt. O(1)"""
+    """Hash a password using bcrypt. O(1)
+    
+    Note: bcrypt has a 72-byte limit on passwords, so we truncate if necessary.
+    """
+    # Truncate password to 72 bytes (bcrypt limit) if necessary
+    password_bytes = password.encode('utf-8')
+    if len(password_bytes) > 72:
+        password = password_bytes[:72].decode('utf-8', errors='ignore')
     return pwd_context.hash(password)
 
 
