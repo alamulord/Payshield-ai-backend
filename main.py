@@ -2,14 +2,10 @@
 """
 PayShield AI Backend — FastAPI Application
 Real-time digital payment fraud detection platform.
-
-Architecture: Monolithic (production-ready for microservices extraction)
-Stack: FastAPI + SQLAlchemy + SQLite (swappable to PostgreSQL)
-Auth: JWT with RBAC (analyst/admin roles)
-Real-time: WebSocket for live alerts and transaction feed
 """
 import uuid
 import asyncio
+import traceback
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -34,40 +30,24 @@ from app.api.v1.health import router as health_router
 async def lifespan(app: FastAPI):
     """Application lifecycle: init DB on startup, close on shutdown"""
     print("🚀 PayShield AI Backend starting...")
+    
     try:
         await init_db()
         print("✅ Database initialized")
     except Exception as e:
         print(f"❌ Database initialization failed: {e}")
-        import traceback
         traceback.print_exc()
-
-    # Auto-seed if empty
-    try:
-        from app.db.database import async_session
-        from sqlalchemy import text
-        async with async_session() as db:
-            result = await db.execute(text("SELECT COUNT(*) FROM users"))
-            count = result.scalar()
-            if count == 0:
-                print("📦 Database is empty, running seeder...")
-                from app.seed import seed_data
-                await seed_data()
-                print("✅ Seeding completed")
-    except Exception as e:
-        print(f"⚠️ Auto-seed check: {e}")
-        import traceback
-        traceback.print_exc()
-
+    
     yield
-
-    print("🛑 PayShield AI Backend shutting down...")
+    
+    print("🛑 Shutting down...")
     try:
         await close_db()
     except Exception as e:
         print(f"⚠️ Error during shutdown: {e}")
 
 
+# Create FastAPI app
 app = FastAPI(
     title="PayShield AI API",
     description="Real-time digital payment fraud detection platform API",
@@ -77,19 +57,7 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# Global exception handler for debugging
-@app.exception_handler(Exception)
-async def global_exception_handler(request: Request, exc: Exception):
-    import traceback
-    error_detail = f"{str(exc)}\n{traceback.format_exc()}"
-    print(f"ERROR: {error_detail}")
-    return JSONResponse(
-        status_code=500,
-        content={"detail": str(exc), "type": type(exc).__name__},
-    )
-
-# --- CORS Middleware ---
-# Allow all origins in production for Render deployment
+# CORS Middleware - Allow all origins
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -99,10 +67,10 @@ app.add_middleware(
 )
 
 
-# --- Rate Limiting Middleware ---
+# Rate Limiting Middleware
 @app.middleware("http")
 async def rate_limit_middleware(request: Request, call_next):
-    """Rate limit middleware. O(1) amortized"""
+    """Rate limit middleware"""
     client_ip = request.client.host if request.client else "unknown"
     if not rate_limiter.check(client_ip):
         return JSONResponse(
@@ -113,7 +81,20 @@ async def rate_limit_middleware(request: Request, call_next):
     return response
 
 
-# --- Mount API Routers ---
+# Global exception handler
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    """Global exception handler for debugging"""
+    error_msg = f"{type(exc).__name__}: {str(exc)}"
+    print(f"❌ ERROR: {error_msg}")
+    traceback.print_exc()
+    return JSONResponse(
+        status_code=500,
+        content={"detail": error_msg, "type": type(exc).__name__},
+    )
+
+
+# Mount API Routers
 API_PREFIX = "/api/v1"
 app.include_router(auth_router, prefix=API_PREFIX)
 app.include_router(transactions_router, prefix=API_PREFIX)
@@ -125,46 +106,49 @@ app.include_router(score_router, prefix=API_PREFIX)
 app.include_router(health_router, prefix=API_PREFIX)
 
 
-# --- WebSocket Endpoint ---
+# WebSocket Endpoint
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
-    """
-    WebSocket endpoint for real-time alerts and transaction feed.
-    Clients connect and receive broadcasts for new alerts/transactions.
-    O(1) per connection, O(c) per broadcast
-    """
+    """WebSocket for real-time alerts and transactions"""
     client_id = str(uuid.uuid4())[:8]
     await ws_manager.connect(websocket, client_id)
     try:
         while True:
-            # Keep connection alive, optionally handle client messages
             data = await websocket.receive_text()
-            # Echo back for ping/pong
             if data == "ping":
                 await websocket.send_json({"type": "pong"})
     except WebSocketDisconnect:
         await ws_manager.disconnect(client_id)
 
 
-# --- Root Endpoint ---
+# Root Endpoint
 @app.get("/")
 async def root():
-    """Root endpoint with API info"""
+    """Root endpoint"""
     return {
         "name": "PayShield AI API",
         "version": "1.0.0",
         "docs": "/docs",
         "health": "/api/v1/health/ping",
-        "websocket": "ws://localhost:8000/ws",
     }
 
 
-# --- Run ---
+# Seed endpoint - manually trigger seeding
+@app.post("/api/v1/seed")
+async def seed_database():
+    """Manually seed the database"""
+    try:
+        from app.seed import seed_data
+        await seed_data()
+        return {"status": "success", "message": "Database seeded"}
+    except Exception as e:
+        traceback.print_exc()
+        return JSONResponse(
+            status_code=500,
+            content={"status": "error", "message": str(e)},
+        )
+
+
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(
-        "main:app",
-        host=settings.HOST,
-        port=settings.PORT,
-        reload=settings.DEBUG,
-    )
+    uvicorn.run("main:app", host=settings.HOST, port=settings.PORT, reload=settings.DEBUG)
