@@ -34,8 +34,13 @@ from app.api.v1.health import router as health_router
 async def lifespan(app: FastAPI):
     """Application lifecycle: init DB on startup, close on shutdown"""
     print("🚀 PayShield AI Backend starting...")
-    await init_db()
-    print("✅ Database initialized")
+    try:
+        await init_db()
+        print("✅ Database initialized")
+    except Exception as e:
+        print(f"❌ Database initialization failed: {e}")
+        import traceback
+        traceback.print_exc()
 
     # Auto-seed if empty
     try:
@@ -48,13 +53,19 @@ async def lifespan(app: FastAPI):
                 print("📦 Database is empty, running seeder...")
                 from app.seed import seed_data
                 await seed_data()
+                print("✅ Seeding completed")
     except Exception as e:
-        print(f"⚠️ Auto-seed check: {e} — Will seed on first request or run manually")
+        print(f"⚠️ Auto-seed check: {e}")
+        import traceback
+        traceback.print_exc()
 
     yield
 
     print("🛑 PayShield AI Backend shutting down...")
-    await close_db()
+    try:
+        await close_db()
+    except Exception as e:
+        print(f"⚠️ Error during shutdown: {e}")
 
 
 app = FastAPI(
@@ -65,6 +76,17 @@ app = FastAPI(
     redoc_url="/redoc",
     lifespan=lifespan,
 )
+
+# Global exception handler for debugging
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    import traceback
+    error_detail = f"{str(exc)}\n{traceback.format_exc()}"
+    print(f"ERROR: {error_detail}")
+    return JSONResponse(
+        status_code=500,
+        content={"detail": str(exc), "type": type(exc).__name__},
+    )
 
 # --- CORS Middleware ---
 # Allow all origins in production for Render deployment

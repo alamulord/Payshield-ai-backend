@@ -93,3 +93,19 @@ async def health_check(db: AsyncSession = Depends(get_db)):
 async def ping():
     """Simple ping endpoint. O(1)"""
     return {"status": "ok", "timestamp": datetime.now(timezone.utc).isoformat()}
+
+
+@router.post("/seed")
+async def manual_seed():
+    """Manually trigger database seeding. O(n)"""
+    try:
+        from app.seed import seed_data
+        await seed_data()
+        return {"status": "success", "message": "Database seeded successfully"}
+    except Exception as e:
+        import traceback
+        return {
+            "status": "error",
+            "message": str(e),
+            "traceback": traceback.format_exc(),
+        }
